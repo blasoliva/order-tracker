@@ -20,6 +20,28 @@ If port 8000 is occupied, set `ORDER_TRACKER_PORT`, for example:
 ORDER_TRACKER_PORT=18080 docker compose up --build -d --wait
 ```
 
+## Configuration
+
+No `.env` file is needed. Every variable in `compose.yaml` has a default, so `docker compose up` works without any setup:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ORDER_TRACKER_PORT` | `8000` | App port |
+| `INCIDENT_RESPONSE_PORT` | `8001` | Incident-response service port |
+| `GRAFANA_PORT` | `3000` | Grafana port, also used in the links inside alerts |
+| `GRAFANA_ADMIN_PASSWORD` | `admin` | Password for Grafana's `admin` user |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `10000` | How often the app exports metrics, in milliseconds |
+| `ORDER_TRACKER_TAG` | `local` | Tag for the Docker images |
+| `ORDER_TRACKER_SUBNET` | `10.215.24.0/24` | Subnet of the Compose network |
+
+The other settings, such as the URLs between services and the data paths, are fixed in `compose.yaml` because they only make sense inside the Docker network.
+
+To change a default without typing it on every command, put it in a `.env` file in the project root. Docker Compose reads that file automatically, and it's in `.gitignore`, so it isn't committed. It's also the place for a real Grafana password, so it doesn't end up in the code. For example, if port 3000 is already in use:
+
+```bash
+GRAFANA_PORT=3001
+```
+
 ## Telemetry
 
 Docker Compose also starts an observability stack. The app sends metrics, logs and traces over OTLP to an OpenTelemetry Collector, which forwards them to storage:
