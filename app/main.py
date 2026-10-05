@@ -7,11 +7,19 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from pydantic import BaseModel, Field
+
+from app import telemetry
 
 
 DB_PATH = Path(os.getenv("ORDER_DB_PATH", "data/orders.db"))
 STATUSES = {"received", "preparing", "shipped", "delivered"}
+
+telemetry.configure_once()
+logger = telemetry.logger
+tracer = trace.get_tracer("order_tracker")
 
 
 def connect():
@@ -76,7 +84,11 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Order Tracker", lifespan=lifespan)
+# FastAPI records the HTTP server spans and the http.server.request.duration metric (with
+# http.route and http.response.status_code) through the providers set up in app/telemetry.py.
+# auto_configure is off because those providers already export over OTLP; leaving it on
+# makes FastAPI attach a second set of exporters and every signal is sent twice.
+app = FastAPI(title="Order Tracker", lifespan=lifespan, telemetry={"auto_configure": False})
 
 
 @app.get("/")
@@ -100,11 +112,31 @@ def list_orders():
 
 @app.get("/api/orders/{order_id}")
 def get_order(order_id: str):
-    with connect() as db:
-        row = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-    if row is None:
-        raise HTTPException(404, "Order not found")
-    return order_detail(row)
+    # Exceptions are recorded by hand so that a 404 is not reported as a span error.
+    with tracer.start_as_current_span(
+        "order.lookup",
+        attributes={"order.id": order_id},
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        try:
+            with connect() as db:
+                row = db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+            if row is None:
+                span.set_attribute("order.found", False)
+                logger.warning("Order not found", extra={"order.id": order_id})
+                raise HTTPException(404, "Order not found")
+            span.set_attributes({"order.found": True, "order.priority": row["priority"]})
+            order = order_detail(row)
+        except HTTPException:
+            raise
+        except Exception as error:
+            span.record_exception(error)
+            span.set_status(Status(StatusCode.ERROR, str(error)))
+            logger.exception("Order lookup failed", extra={"order.id": order_id})
+            raise
+        logger.info("Order lookup succeeded", extra={"order.id": order_id})
+        return order
 
 
 @app.post("/api/orders", status_code=201)
