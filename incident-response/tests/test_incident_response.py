@@ -55,13 +55,13 @@ def backends(request: httpx.Request) -> httpx.Response:
         ]})
     if path == f"/api/v2/traces/{TRACE_ID}":
         return httpx.Response(200, json={"trace": {"resourceSpans": [{"scopeSpans": [{"spans": [
-            {"name": "order.lookup", "spanId": "b", "parentSpanId": "a",
+            {"name": "order.lookup", "spanId": "zgqXvA+LfEs=", "parentSpanId": "rdIQ6a4C/gY=",
              "startTimeUnixNano": "1791209116292000000", "endTimeUnixNano": "1791209116293000000",
              "status": {"code": "STATUS_CODE_ERROR", "message": "day is out of range for month"},
              "attributes": [{"key": "order.id", "value": {"stringValue": "express-1002"}}],
              "events": [{"name": "exception", "attributes": [
                  {"key": "exception.type", "value": {"stringValue": "ValueError"}}]}]},
-            {"name": "GET /api/orders/{order_id}", "spanId": "a",
+            {"name": "GET /api/orders/{order_id}", "spanId": "rdIQ6a4C/gY=",
              "startTimeUnixNano": "1791209116291000000", "endTimeUnixNano": "1791209116296000000",
              "attributes": [{"key": "http.response.status_code", "value": {"intValue": "500"}}]},
         ]}]}]}})
@@ -105,6 +105,9 @@ def test_firing_alert_records_endpoint_metrics_traces_and_logs(client):
     assert trace["trace_id"] == TRACE_ID
     lookup = next(span for span in trace["spans"] if span["name"] == "order.lookup")
     assert lookup["status"] == "ERROR"
+    # Tempo's base64 span IDs are converted to the hex form that logs use.
+    assert lookup["span_id"] == "ce0a97bc0f8b7c4b"
+    assert lookup["parent_span_id"] == "add210e9ae02fe06"
     assert lookup["attributes"]["order.id"] == "express-1002"
     assert lookup["events"][0]["attributes"]["exception.type"] == "ValueError"
     [log] = collected["logs"]

@@ -1,5 +1,7 @@
 """Queries Prometheus, Tempo and Loki for what was happening around an alert."""
 
+import base64
+import binascii
 import json
 import os
 import re
@@ -153,8 +155,8 @@ def _spans(body: dict) -> list[dict]:
                 status = span.get("status", {})
                 spans.append({
                     "name": span.get("name"),
-                    "span_id": span.get("spanId"),
-                    "parent_span_id": span.get("parentSpanId"),
+                    "span_id": _hex_id(span.get("spanId")),
+                    "parent_span_id": _hex_id(span.get("parentSpanId")),
                     "start": _from_nanos(span.get("startTimeUnixNano", 0)),
                     "duration_ms": round(
                         (int(span.get("endTimeUnixNano", 0)) - int(span.get("startTimeUnixNano", 0))) / 1e6, 3
@@ -168,6 +170,16 @@ def _spans(body: dict) -> list[dict]:
                     ],
                 })
     return sorted(spans, key=lambda span: span["start"])
+
+
+def _hex_id(value: str | None) -> str | None:
+    """Tempo returns span IDs base64-encoded; logs carry them as hex, so convert to match."""
+    if not value:
+        return None
+    try:
+        return base64.b64decode(value, validate=True).hex()
+    except (binascii.Error, ValueError):
+        return value
 
 
 def _attributes(attributes: list[dict]) -> dict:

@@ -98,6 +98,7 @@ def receive_alerts(notification: GrafanaNotification, background_tasks: Backgrou
         incident["last_notified_at"] = now()
         if alert.status == "firing":
             incident["status"] = "firing"
+            incident["resolved_at"] = None
             incident["values"] = alert.values
             incident["summary"] = alert.annotations.get("summary", incident["summary"])
         else:
