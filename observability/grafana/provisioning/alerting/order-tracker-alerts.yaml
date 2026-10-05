@@ -1,0 +1,72 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: order-tracker
+    folder: Order Tracker
+    interval: 30s
+    rules:
+      - uid: order-tracker-5xx
+        title: Order Tracker 5xx responses
+        # One alert instance per endpoint (method + route), each firing on its own.
+        condition: C
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              refId: A
+              instant: true
+              range: false
+              # The window here must match the "window" annotation below.
+              expr: >-
+                sum by (http_request_method, http_route) (
+                  increase(http_server_request_duration_seconds_count{job="order-tracker", http_response_status_code=~"5.."}[5m])
+                )
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+        # A route only gets a 5xx series after its first 5xx, and series disappear about
+        # 5 minutes after the app restarts, so "no data" is the normal state when nothing
+        # is failing. Treat it as OK rather than raising a separate NoData alert.
+        noDataState: OK
+        # A failed query (e.g. Prometheus is down) still shows up, as an Error state.
+        execErrState: Error
+        # A single customer-facing 5xx is enough to fire; the 5m window keeps it firing
+        # for 5 minutes after the last error, then it resolves on its own.
+        for: 0s
+        labels:
+          severity: critical
+          service: order-tracker
+        annotations:
+          # Links the rule to the "Errors per second by route and status" panel. Grafana adds
+          # the dashboard and panel links to notifications from these.
+          __dashboardUid__: order-tracker
+          __panelId__: "6"
+          summary: >-
+            5xx responses from {{ index .Labels "http_request_method" }} {{ index .Labels "http_route" }}
+            in the last 5 minutes: {{ printf "%.0f" .Values.B.Value }}
+          description: >-
+            The endpoint {{ index .Labels "http_request_method" }} {{ index .Labels "http_route" }}
+            is returning server errors (HTTP 5xx): {{ printf "%.0f" .Values.B.Value }} in the last
+            5 minutes. Open the dashboard to see the error type, the error logs, and the failed
+            traces.
+          endpoint: '{{ index .Labels "http_request_method" }} {{ index .Labels "http_route" }}'
+          window: 5m
+          dashboard_url: '{{ externalURL }}d/order-tracker/order-tracker?from=now-30m&to=now'
