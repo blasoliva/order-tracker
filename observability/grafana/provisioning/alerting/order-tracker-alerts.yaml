@@ -70,3 +70,25 @@ groups:
           endpoint: '{{ index .Labels "http_request_method" }} {{ index .Labels "http_route" }}'
           window: 5m
           dashboard_url: '{{ externalURL }}d/order-tracker/order-tracker?from=now-30m&to=now'
+
+# Every alert notification (firing and resolved) goes to the incident-response service,
+# which saves it together with the related metrics, traces and logs.
+contactPoints:
+  - orgId: 1
+    name: incident-response
+    receivers:
+      - uid: incident-response-webhook
+        type: webhook
+        settings:
+          url: http://incident-response:8001/alerts
+          httpMethod: POST
+        disableResolveMessage: false
+
+policies:
+  - orgId: 1
+    receiver: incident-response
+    # One notification group per endpoint, so each endpoint becomes its own incident.
+    group_by: [grafana_folder, alertname, http_request_method, http_route]
+    group_wait: 10s
+    group_interval: 1m
+    repeat_interval: 4h

@@ -23,6 +23,25 @@ services:
       timeout: 3s
       retries: 12
 
+  incident-response:
+    image: order-tracker-incident-response:${ORDER_TRACKER_TAG:-local}
+    build: ./incident-response
+    ports:
+      - "127.0.0.1:${INCIDENT_RESPONSE_PORT:-8001}:8001"
+    environment:
+      PROMETHEUS_URL: http://prometheus:9090
+      TEMPO_URL: http://tempo:3200
+      LOKI_URL: http://loki:3100
+      INCIDENT_DATA_DIR: /data/incidents
+    volumes:
+      - incidents:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/healthz', timeout=3)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.161.0
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -92,6 +111,7 @@ services:
 
 volumes:
   orders:
+  incidents:
   loki:
   tempo:
   prometheus:
